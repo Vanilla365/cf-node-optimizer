@@ -1,6 +1,6 @@
 // Cloudflare Worker: KV short link subscription + access token protection
 // Requires:
-// - KV namespace binding: SUB_STORE
+// - KV namespace binding: CFSUB_KV
 // - Secret/Variable: SUB_ACCESS_TOKEN
 // Optional:
 // - Secret/Variable: SUB_LINK_SECRET (legacy long-token compatibility)
@@ -400,7 +400,7 @@ function createShortId(length = 10) {
 async function createUniqueShortId(env, tries = 8) {
   for (let i = 0; i < tries; i++) {
     const id = createShortId(10);
-    const exists = await env.SUB_STORE.get(`sub:${id}`);
+    const exists = await env.CFSUB_KV.get(`sub:${id}`);
     if (!exists) return id;
   }
   throw new Error('无法生成唯一短链接，请稍后再试');
@@ -464,17 +464,17 @@ async function handleGenerate(request, env, url) {
   const dedupHash = await buildDedupHash(body);
   const dedupKey = `dedup:${dedupHash}`;
 
-  let id = await env.SUB_STORE.get(dedupKey);
+  let id = await env.CFSUB_KV.get(dedupKey);
 
   if (!id) {
     id = await createUniqueShortId(env);
     const ttl = 60 * 60 * 24 * 7; // 7天
 
-    await env.SUB_STORE.put(`sub:${id}`, JSON.stringify(payload), {
+    await env.CFSUB_KV.put(`sub:${id}`, JSON.stringify(payload), {
       expirationTtl: ttl,
     });
 
-    await env.SUB_STORE.put(dedupKey, id, {
+    await env.CFSUB_KV.put(dedupKey, id, {
       expirationTtl: ttl,
     });
   }
@@ -533,7 +533,7 @@ async function handleSub(url, env) {
   const id = url.pathname.split('/').pop();
   if (!id) return text('missing id', 400);
 
-  const raw = await env.SUB_STORE.get(`sub:${id}`);
+  const raw = await env.CFSUB_KV.get(`sub:${id}`);
   if (!raw) return text('not found', 404);
 
   const record = JSON.parse(raw);
